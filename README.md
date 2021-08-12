@@ -14,10 +14,13 @@ These are the logical steps (of course, you can always see the source code as we
 * Duplicate the handle to the socket (identified with \Device\Udp).
 * Extract from the socket the remote address.
 
-## Credits
+## References
 I strongly recommand to read and see the interesting article about ShadowMove:
 * https://www.usenix.org/system/files/sec20summer_niakanlahiji_prepub.pdf
 * https://github.com/0xcpu/winsmsd
 
 A really good answer that gave me the hope that it is possible:
 * https://stackoverflow.com/questions/16262114/c-get-handle-of-open-sockets-of-a-program
+
+Thanks for this repo for giving an example of how to use GetExtendedUdpTable:
+* https://github.com/w4kfu/whook/blob/master/src/network.cpp
