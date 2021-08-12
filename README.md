@@ -7,7 +7,7 @@ I could not get the remote address (which is very important) when somebody conne
 I went on a quest to find the answer once and for all - How to do it?<br /><br />
 With the help of the amazing repositories and article (listed below) and people that helped me, I found a way!
 
-## Don't leave as like that! What is the way?
+## Don't leave us like that! What is the way?
 These are the logical steps (of course, you can always see the source code as well):
 * Get all the PIDs that are currently communicating via UDP (via GetExtendedUdpTable).
 * Enumerate the PIDs and extract their handles table (NtQueryInformation, NtQueryObject).
