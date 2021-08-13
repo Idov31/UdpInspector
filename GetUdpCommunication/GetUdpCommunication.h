@@ -49,4 +49,4 @@ NTQUERYOBJECT               pNtQueryObject;
 bool LoadFunctions();
 std::list<DWORD> GetProcesses();
 SOCKET GetSocket(DWORD pid);
-void PrintInformation(SOCKET socket);
+void PrintInformation(SOCKET socket, DWORD pid);

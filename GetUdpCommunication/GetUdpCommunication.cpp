@@ -16,10 +16,11 @@ int main()
 
 	for (DWORD pid : processes) {
 		processSocket = GetSocket(pid);
-		PrintInformation(processSocket);
-	}
 
-	//WSACleanup();
+		if (processSocket != INVALID_SOCKET) {
+			PrintInformation(processSocket, pid);
+		}
+	}
 	return 0;
 }
 
@@ -124,7 +125,7 @@ SOCKET GetSocket(DWORD pid)
 	HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
 
 	if (!VALID_HANDLE(hProcess)) {
-		std::cerr << "Failed to open process: " << GetLastError() << std::endl;
+		std::cerr << "Failed to open process " << pid << " because: " << GetLastError() << std::endl;
 		return TargetSocket;
 	}
 
@@ -249,21 +250,25 @@ SOCKET GetSocket(DWORD pid)
 	return TargetSocket;
 }
 
-void PrintInformation(SOCKET socket) {
+void PrintInformation(SOCKET socket, DWORD pid) {
 	sockaddr_in socketAddress;
 	int nameLength = sizeof(sockaddr_in);
 
 	if (getpeername(socket, (PSOCKADDR)&socketAddress, &nameLength)) {
-		fwprintf(stdout, L"Address: %u.%u.%u.%u Port: %hu\n",
-			socketAddress.sin_addr.S_un.S_un_b.s_b1,
-			socketAddress.sin_addr.S_un.S_un_b.s_b2,
-			socketAddress.sin_addr.S_un.S_un_b.s_b3,
-			socketAddress.sin_addr.S_un.S_un_b.s_b4,
-			ntohs(socketAddress.sin_port));
+		if (ntohs(socketAddress.sin_port) != 0) {
+			fwprintf(stdout, L"Pid: %d\tAddress: %u.%u.%u.%u\tPort: %hu\n",
+				pid,
+				socketAddress.sin_addr.S_un.S_un_b.s_b1,
+				socketAddress.sin_addr.S_un.S_un_b.s_b2,
+				socketAddress.sin_addr.S_un.S_un_b.s_b3,
+				socketAddress.sin_addr.S_un.S_un_b.s_b4,
+				ntohs(socketAddress.sin_port));
+		}
 	}
 
 	// I filtered the 10057 error code since it means that the socket is not connected.
 	// https://docs.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2
 	else if (WSAGetLastError() != 10057 && WSAGetLastError() != 0)
 		std::cerr << "Failed to retrieve address of the peer: " << WSAGetLastError() << std::endl;
+	closesocket(socket);
 }
