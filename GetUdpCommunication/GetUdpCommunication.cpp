@@ -225,8 +225,6 @@ SOCKET GetSocket(DWORD pid)
 								WSA_FLAG_OVERLAPPED);
 
 							if (TargetSocket != INVALID_SOCKET) {
-								std::cout << "Socket duplicated for " << pid << std::endl;
-
 								CloseHandle(TargetHandle);
 								free(pObjNameInfo);
 								free(pSysHandleInfo);
@@ -252,20 +250,20 @@ SOCKET GetSocket(DWORD pid)
 }
 
 void PrintInformation(SOCKET socket) {
-	SOCKADDR_IN socketAddress;
-	int nameLength = sizeof(SOCKADDR_IN);
+	sockaddr_in socketAddress;
+	int nameLength = sizeof(sockaddr_in);
 
-	int ret = getpeername(socket, (PSOCKADDR)&socketAddress, &nameLength);
-
-	if (ret != 0) {
-		std::cerr << "Failed to retrieve address of the peer: " << ret << std::endl;
-		return;
+	if (getpeername(socket, (PSOCKADDR)&socketAddress, &nameLength)) {
+		fwprintf(stdout, L"Address: %u.%u.%u.%u Port: %hu\n",
+			socketAddress.sin_addr.S_un.S_un_b.s_b1,
+			socketAddress.sin_addr.S_un.S_un_b.s_b2,
+			socketAddress.sin_addr.S_un.S_un_b.s_b3,
+			socketAddress.sin_addr.S_un.S_un_b.s_b4,
+			ntohs(socketAddress.sin_port));
 	}
 
-	fwprintf(stdout, L"Address: %u.%u.%u.%u Port: %hu\n",
-		socketAddress.sin_addr.S_un.S_un_b.s_b1,
-		socketAddress.sin_addr.S_un.S_un_b.s_b2,
-		socketAddress.sin_addr.S_un.S_un_b.s_b3,
-		socketAddress.sin_addr.S_un.S_un_b.s_b4,
-		ntohs(socketAddress.sin_port));
+	// I filtered the 10057 error code since it means that the socket is not connected.
+	// https://docs.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2
+	else if (WSAGetLastError() != 10057 && WSAGetLastError() != 0)
+		std::cerr << "Failed to retrieve address of the peer: " << WSAGetLastError() << std::endl;
 }
