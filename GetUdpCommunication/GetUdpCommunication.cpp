@@ -15,8 +15,12 @@ int main()
 	std::list<std::string> remoteAddresses;
 
 	for (DWORD pid : processes) {
+		std::cout << pid << std::endl;
 		processSocket = GetSocket(pid);
 	}
+
+	//WSACleanup();
+	return 0;
 }
 
 bool LoadFunctions() {
@@ -33,11 +37,11 @@ bool LoadFunctions() {
 	}
 
 	// Loading the functions
-	NtDuplicateObject = (NTDUPLICATEOBJECT)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtDuplicateObject");
+	pNtDuplicateObject = (NTDUPLICATEOBJECT)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtDuplicateObject");
 	pNtQuerySystemInformation = (NTQUERYSYSTEMINFORMATION)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQuerySystemInformation");
 	pNtQueryObject = (NTQUERYOBJECT)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryObject");
 
-	if (NtDuplicateObject && pNtQuerySystemInformation && pNtQueryObject) {
+	if (VALID_HANDLE(pNtDuplicateObject) && VALID_HANDLE(pNtQuerySystemInformation) && VALID_HANDLE(pNtQueryObject)) {
 		return true;
 	}
 	else {
@@ -86,6 +90,9 @@ std::list<DWORD> GetProcesses() {
 	for (DWORD i = 0; i < pmib->dwNumEntries; i++) {
 		bool add = true;
 
+		if (pmib->table[i].dwOwningPid == 4)
+			continue;
+
 		for (DWORD pid : lmib) {
 			if (pid == pmib->table[i].dwOwningPid) {
 				add = false;
@@ -100,130 +107,147 @@ std::list<DWORD> GetProcesses() {
 	return lmib;
 }
 
-SOCKET GetSocket(DWORD pid) {
-	// Reference: https://github.com/0xcpu/winsmsd/blob/master/winsmsd.c
-
-	PSYSTEM_HANDLE_INFORMATION pSystemHandleInformation = NULL;
-	POBJECT_NAME_INFORMATION pObjectNameInformation = NULL;
-	ULONG systemInformationLength = 0;
-	ULONG objectInformationLength = 0;
-	ULONG returnLength;
-	HANDLE targetHandle = INVALID_HANDLE_VALUE;
-	SOCKET targetSocket = INVALID_SOCKET;
+SOCKET GetSocket(DWORD pid)
+{
+	PSYSTEM_HANDLE_INFORMATION  pSysHandleInfo = NULL;
+	POBJECT_NAME_INFORMATION    pObjNameInfo = NULL;
+	ULONG SystemInformationLength = 0;
+	ULONG ObjectInformationLength = 0;
+	ULONG ReturnLength;
+	HANDLE TargetHandle = INVALID_HANDLE_VALUE;
+	SOCKET TargetSocket = INVALID_SOCKET;
 	NTSTATUS ntStatus;
-	PCWSTR pcwDeviceUdp = L"\\Device\\Udp";
-	INT wsaErr;
-	WSAPROTOCOL_INFOW wsaProtocolInfo = { 0 };
+	PCWSTR pcwDeviceAfd = L"\\Device\\Afd";
+	INT WsaErr;
+	WSAPROTOCOL_INFOW WsaProtocolInfo = { 0 };
 
 	// Duplicating the process handle.
 	HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
 
 	if (!VALID_HANDLE(hProcess)) {
-		OutputDebugStringA("[GetSocket] Could not open process.");
-		return targetSocket;
+		std::cerr << "Failed to open process: " << GetLastError() << std::endl;
+		return TargetSocket;
 	}
 
-	do {
-		pSystemHandleInformation = (PSYSTEM_HANDLE_INFORMATION)calloc(systemInformationLength, sizeof(UCHAR));
+	pSysHandleInfo = (PSYSTEM_HANDLE_INFORMATION)calloc(SystemInformationLength, sizeof(UCHAR));
 
-		if (!pSystemHandleInformation)
-			break;
+	if (!pSysHandleInfo) {
+		std::cerr << "Failed to allocate buffer for system handles: " << GetLastError() << std::endl;
+		return TargetSocket;
+	}
 
-		// Filling the system handle information (handle tables).
-		while (pNtQuerySystemInformation((SYSTEM_INFORMATION_CLASS)SystemHandleInformation,
-			pSystemHandleInformation,
-			systemInformationLength,
-			&returnLength) == STATUS_INFO_LENGTH_MISMATCH) {
+	// Getting the handles for the process.
+	while (pNtQuerySystemInformation(SystemHandleInformation,
+		pSysHandleInfo,
+		SystemInformationLength,
+		&ReturnLength) == STATUS_INFO_LENGTH_MISMATCH) {
+		free(pSysHandleInfo);
+		SystemInformationLength = ReturnLength;
+		pSysHandleInfo = (PSYSTEM_HANDLE_INFORMATION)calloc(SystemInformationLength, sizeof(UCHAR));
 
-			free(pSystemHandleInformation);
-			systemInformationLength = returnLength;
-			pSystemHandleInformation = (PSYSTEM_HANDLE_INFORMATION)calloc(systemInformationLength, sizeof(UCHAR));
-
-			if (!pSystemHandleInformation)
-				break;
+		if (!pSysHandleInfo) {
+			std::cerr << "Failed to allocate buffer for system handles: " << GetLastError() << std::endl;
+			return TargetSocket;
 		}
+	}
 
-		if (!pSystemHandleInformation)
-			break;
+	if (!pSysHandleInfo) {
+		CloseHandle(TargetHandle);
+		return TargetSocket;
+	}
 
-		// Iterating the handles.
-		for (size_t i = 0; i < pSystemHandleInformation->NumberOfHandles; i++) {
-
-			// Getting the object's handle.
-			ntStatus = NtDuplicateObject(hProcess,
-				(HANDLE)pSystemHandleInformation->Handles[i].HandleValue,
+	// Iterating the handles.
+	for (size_t i = 0; i < pSysHandleInfo->NumberOfHandles; i++) {
+		if (pSysHandleInfo->Handles[i].ObjectTypeIndex != 0x24) {
+			ntStatus = pNtDuplicateObject(hProcess,
+				(HANDLE)pSysHandleInfo->Handles[i].HandleValue,
 				GetCurrentProcess(),
-				&targetHandle,
+				&TargetHandle,
 				PROCESS_ALL_ACCESS,
 				FALSE,
 				DUPLICATE_SAME_ACCESS);
 
-			if (ntStatus != STATUS_SUCCESS)
-				break;
+			if (ntStatus == STATUS_SUCCESS) {
+				pObjNameInfo = (POBJECT_NAME_INFORMATION)calloc(ObjectInformationLength, sizeof(UCHAR));
 
-			pObjectNameInformation = (POBJECT_NAME_INFORMATION)calloc(objectInformationLength, sizeof(UCHAR));
+				if (!pObjNameInfo) {
+					std::cerr << "Failed to allocate buffer for object name: " << GetLastError() << std::endl;
 
-			if (!pObjectNameInformation)
-				break;
+					CloseHandle(TargetHandle);
+					free(pSysHandleInfo);
+					pSysHandleInfo = NULL;
 
-			// Getting the object's name.
-			while (pNtQueryObject(targetHandle,
-				(OBJECT_INFORMATION_CLASS)ObjectNameInformation,
-				pObjectNameInformation,
-				objectInformationLength,
-				&returnLength) == STATUS_INFO_LENGTH_MISMATCH) {
+					return TargetSocket;
+				}
 
-				free(pObjectNameInformation);
-				objectInformationLength = returnLength;
-				pObjectNameInformation = (POBJECT_NAME_INFORMATION)calloc(objectInformationLength, sizeof(UCHAR));
+				// Getting the object's name.
+				while (pNtQueryObject(TargetHandle,
+					(OBJECT_INFORMATION_CLASS)ObjectNameInformation,
+					pObjNameInfo,
+					ObjectInformationLength,
+					&ReturnLength) == STATUS_INFO_LENGTH_MISMATCH) {
+					free(pObjNameInfo);
+					ObjectInformationLength = ReturnLength;
+					pObjNameInfo = (POBJECT_NAME_INFORMATION)calloc(ObjectInformationLength, sizeof(UCHAR));
 
-				if (!pObjectNameInformation)
-					break;
-			}
+					if (!pObjNameInfo) {
+						std::cerr << "Failed to allocate buffer for object name: " << GetLastError() << std::endl;
 
-			if (!pObjectNameInformation)
-				break;
+						CloseHandle(TargetHandle);
+						free(pSysHandleInfo);
+						pSysHandleInfo = NULL;
 
-			// Checking if the object name matches to the UDP.
-			if ((pObjectNameInformation->Name.Length / 2) == wcslen(pcwDeviceUdp)) {
-				if ((wcsncmp(pObjectNameInformation->Name.Buffer, pcwDeviceUdp, wcslen(pcwDeviceUdp)) == 0)) {
-
-					// Trying to duplicate the socket handle.
-					wsaErr = WSADuplicateSocketW((SOCKET)targetHandle, GetCurrentProcessId(), &wsaProtocolInfo);
-
-					if (wsaErr != 0) {
-						OutputDebugStringA("Failed to retrieve WSA protocol info.");
-						break;
-					}
-
-					targetSocket = WSASocket(wsaProtocolInfo.iAddressFamily,
-						wsaProtocolInfo.iSocketType,
-						wsaProtocolInfo.iProtocol,
-						&wsaProtocolInfo,
-						0,
-						WSA_FLAG_OVERLAPPED);
-
-					if (targetSocket != INVALID_SOCKET) {
-						std::cout << "Socket was duplicated!" << std::endl;
-						// fwprintf(stdout, L"[OK] Socket was duplicated!\n");
-						break;
-					}
-					else {
-						std::cout << "Failed to duplicate socket: " << GetLastError() << std::endl;
-						break;
+						return TargetSocket;
 					}
 				}
+
+				// Checking if the object is a socket.
+				if ((pObjNameInfo->Name.Length / 2) == wcslen(pcwDeviceAfd)) {
+					if ((wcsncmp(pObjNameInfo->Name.Buffer, pcwDeviceAfd, wcslen(pcwDeviceAfd)) == 0)) {
+						WsaErr = WSADuplicateSocketW((SOCKET)TargetHandle, GetCurrentProcessId(), &WsaProtocolInfo);
+
+						if (WsaErr != 0) {
+							std::cerr << "Failed retrieving WSA protocol info: " << WsaErr << std::endl;
+
+							CloseHandle(TargetHandle);
+							free(pObjNameInfo);
+							free(pSysHandleInfo);
+							pSysHandleInfo = NULL;
+							pObjNameInfo = NULL;
+
+							return TargetSocket;
+						}
+						else {
+							TargetSocket = WSASocket(WsaProtocolInfo.iAddressFamily,
+								WsaProtocolInfo.iSocketType,
+								WsaProtocolInfo.iProtocol,
+								&WsaProtocolInfo,
+								0,
+								WSA_FLAG_OVERLAPPED);
+
+							if (TargetSocket != INVALID_SOCKET) {
+								std::cout << "Socket duplicated for " << pid << std::endl;
+
+								CloseHandle(TargetHandle);
+								free(pObjNameInfo);
+								free(pSysHandleInfo);
+								pObjNameInfo = NULL;
+								pSysHandleInfo = NULL;
+
+								return TargetSocket;
+							}
+						}
+					}
+				}
+
+				CloseHandle(TargetHandle);
+				free(pObjNameInfo);
+				pObjNameInfo = NULL;
 			}
 		}
-	} while (false);
+	}
 
-	// Cleanup.
-	if (pObjectNameInformation)
-		free(pObjectNameInformation);
-	if (pSystemHandleInformation)
-		free(pSystemHandleInformation);
-	if (targetHandle)
-		CloseHandle(targetHandle);
-	CloseHandle(hProcess);
-	return targetSocket;
+	free(pSysHandleInfo);
+
+	return TargetSocket;
 }

@@ -7,7 +7,6 @@
 
 #define VALID_HANDLE(handle) (handle != INVALID_HANDLE_VALUE && handle != 0)
 
-
 // Define important functions.
 typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO {
 	ULONG   UniqueProcessId;
@@ -42,7 +41,7 @@ typedef NTSTATUS(*NTQUERYOBJECT)(
 	PULONG                   ReturnLength
 	);
 
-NTDUPLICATEOBJECT           NtDuplicateObject;
+NTDUPLICATEOBJECT           pNtDuplicateObject;
 NTQUERYSYSTEMINFORMATION    pNtQuerySystemInformation;
 NTQUERYOBJECT               pNtQueryObject;
 
