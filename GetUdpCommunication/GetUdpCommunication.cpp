@@ -15,8 +15,8 @@ int main()
 	std::list<std::string> remoteAddresses;
 
 	for (DWORD pid : processes) {
-		std::cout << pid << std::endl;
 		processSocket = GetSocket(pid);
+		PrintInformation(processSocket);
 	}
 
 	//WSACleanup();
@@ -61,18 +61,18 @@ std::list<DWORD> GetProcesses() {
 	// Allocating size.
 	pmib = (PMIB_UDPTABLE_OWNER_PID)malloc(sizeof(MIB_UDPTABLE_OWNER_PID));
 	if (pmib == NULL) {
-		OutputDebugStringA("[GetProcesses] malloc failed.");
+		std::cerr << "Failed to allocate memory: " << GetLastError() << std::endl;
 		return lmib;
 	}
 	dwSize = sizeof(MIB_UDPTABLE_OWNER_PID);
 
-	// See if it is a good size.
+	// Checking if allocated enough space.
 	if ((dwRetVal = GetExtendedUdpTable(pmib, &dwSize, TRUE, AF_INET, UDP_TABLE_OWNER_PID, 0)) == ERROR_INSUFFICIENT_BUFFER) {
 		free(pmib);
 		pmib = (PMIB_UDPTABLE_OWNER_PID)malloc(dwSize);
 
 		if (pmib == NULL) {
-			OutputDebugStringA("[GetProcesses] malloc failed.");
+			std::cerr << "Failed to allocate memory: " << GetLastError() << std::endl;
 			return lmib;
 		}
 	}
@@ -81,8 +81,7 @@ std::list<DWORD> GetProcesses() {
 	dwRetVal = GetExtendedUdpTable(pmib, &dwSize, TRUE, AF_INET, UDP_TABLE_OWNER_PID, 0);
 
 	if (dwRetVal != 0) {
-		OutputDebugStringA("[GetProcesses] GetExtendedUdpTable failed.\n");
-		// fprintf(stderr, "[-] GetUDPConnections - GetExtendedUdpTable failed : %lu\n", GetLastError());
+		std::cerr << "Failed to achieve the Udp table:  " << GetLastError() << std::endl;
 		return lmib;
 	}
 
@@ -250,4 +249,23 @@ SOCKET GetSocket(DWORD pid)
 	free(pSysHandleInfo);
 
 	return TargetSocket;
+}
+
+void PrintInformation(SOCKET socket) {
+	SOCKADDR_IN socketAddress;
+	int nameLength = sizeof(SOCKADDR_IN);
+
+	int ret = getpeername(socket, (PSOCKADDR)&socketAddress, &nameLength);
+
+	if (ret != 0) {
+		std::cerr << "Failed to retrieve address of the peer: " << ret << std::endl;
+		return;
+	}
+
+	fwprintf(stdout, L"Address: %u.%u.%u.%u Port: %hu\n",
+		socketAddress.sin_addr.S_un.S_un_b.s_b1,
+		socketAddress.sin_addr.S_un.S_un_b.s_b2,
+		socketAddress.sin_addr.S_un.S_un_b.s_b3,
+		socketAddress.sin_addr.S_un.S_un_b.s_b4,
+		ntohs(socketAddress.sin_port));
 }
