@@ -11,7 +11,7 @@ With the help of the amazing repositories and article (listed below) and people 
 These are the logical steps (of course, you can always see the source code as well):
 * Get all the PIDs that are currently communicating via UDP (via GetExtendedUdpTable).
 * Enumerate the PIDs and extract their handles table (NtQueryInformation, NtQueryObject).
-* Duplicate the handle to the socket (identified with \Device\Udp).
+* Duplicate the handle to the socket (identified with \Device\Afd).
 * Extract from the socket the remote address.
 
 ## References
