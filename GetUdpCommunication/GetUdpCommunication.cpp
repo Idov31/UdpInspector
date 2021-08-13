@@ -1,22 +1,48 @@
-#include <iostream>
-#include <WinSock2.h>
-#include <Windows.h>
-#include <iphlpapi.h>
-#include <winternl.h>
-#include <list>
+#include "stdafx.h"
 #include "GetUdpCommunication.h"
-
-std::list<DWORD> GetProcesses();
-SOCKET GetSocket(DWORD pid);
 
 int main()
 {
+	if (!LoadFunctions()) {
+		std::cout << "Failed to initialize critical functions, exiting." << std::endl;
+		return -1;
+	}
+
+	// Getting the processes that communicates via UDP.
 	std::list<DWORD> processes = GetProcesses();
+
 	SOCKET processSocket;
 	std::list<std::string> remoteAddresses;
 
 	for (DWORD pid : processes) {
-		//WSADuplicateSocket(processSocket, pid, NULL);
+		processSocket = GetSocket(pid);
+	}
+}
+
+bool LoadFunctions() {
+	WORD    wVersionRequested;
+	WSADATA WsaData;
+	INT     wsaErr;
+
+	// Initialise the socket.
+	wVersionRequested = MAKEWORD(2, 2);
+	wsaErr = WSAStartup(wVersionRequested, &WsaData);
+
+	if (wsaErr != 0) {
+		return false;
+	}
+
+	// Loading the functions
+	NtDuplicateObject = (NTDUPLICATEOBJECT)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtDuplicateObject");
+	pNtQuerySystemInformation = (NTQUERYSYSTEMINFORMATION)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQuerySystemInformation");
+	pNtQueryObject = (NTQUERYOBJECT)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryObject");
+
+	if (NtDuplicateObject && pNtQuerySystemInformation && pNtQueryObject) {
+		return true;
+	}
+	else {
+		WSACleanup();
+		return false;
 	}
 }
 
@@ -28,6 +54,7 @@ std::list<DWORD> GetProcesses() {
 	DWORD dwSize = 0;
 	DWORD dwRetVal;
 
+	// Allocating size.
 	pmib = (PMIB_UDPTABLE_OWNER_PID)malloc(sizeof(MIB_UDPTABLE_OWNER_PID));
 	if (pmib == NULL) {
 		OutputDebugStringA("[GetProcesses] malloc failed.");
@@ -35,6 +62,7 @@ std::list<DWORD> GetProcesses() {
 	}
 	dwSize = sizeof(MIB_UDPTABLE_OWNER_PID);
 
+	// See if it is a good size.
 	if ((dwRetVal = GetExtendedUdpTable(pmib, &dwSize, TRUE, AF_INET, UDP_TABLE_OWNER_PID, 0)) == ERROR_INSUFFICIENT_BUFFER) {
 		free(pmib);
 		pmib = (PMIB_UDPTABLE_OWNER_PID)malloc(dwSize);
@@ -44,6 +72,8 @@ std::list<DWORD> GetProcesses() {
 			return lmib;
 		}
 	}
+
+	// Filling up the table.
 	dwRetVal = GetExtendedUdpTable(pmib, &dwSize, TRUE, AF_INET, UDP_TABLE_OWNER_PID, 0);
 
 	if (dwRetVal != 0) {
@@ -51,8 +81,20 @@ std::list<DWORD> GetProcesses() {
 		// fprintf(stderr, "[-] GetUDPConnections - GetExtendedUdpTable failed : %lu\n", GetLastError());
 		return lmib;
 	}
+
+	// Removing the duplications.
 	for (DWORD i = 0; i < pmib->dwNumEntries; i++) {
-		lmib.push_back(pmib->table[i].dwOwningPid);
+		bool add = true;
+
+		for (DWORD pid : lmib) {
+			if (pid == pmib->table[i].dwOwningPid) {
+				add = false;
+				break;
+			}
+		}
+
+		if (add)
+			lmib.push_back(pmib->table[i].dwOwningPid);
 	}
 	free(pmib);
 	return lmib;
@@ -88,7 +130,7 @@ SOCKET GetSocket(DWORD pid) {
 			break;
 
 		// Filling the system handle information (handle tables).
-		while (NtQuerySystemInformation(SystemHandleInformation,
+		while (pNtQuerySystemInformation((SYSTEM_INFORMATION_CLASS)SystemHandleInformation,
 			pSystemHandleInformation,
 			systemInformationLength,
 			&returnLength) == STATUS_INFO_LENGTH_MISMATCH) {
@@ -100,6 +142,9 @@ SOCKET GetSocket(DWORD pid) {
 			if (!pSystemHandleInformation)
 				break;
 		}
+
+		if (!pSystemHandleInformation)
+			break;
 
 		// Iterating the handles.
 		for (size_t i = 0; i < pSystemHandleInformation->NumberOfHandles; i++) {
@@ -122,7 +167,7 @@ SOCKET GetSocket(DWORD pid) {
 				break;
 
 			// Getting the object's name.
-			while (NtQueryObject(targetHandle,
+			while (pNtQueryObject(targetHandle,
 				(OBJECT_INFORMATION_CLASS)ObjectNameInformation,
 				pObjectNameInformation,
 				objectInformationLength,
@@ -133,12 +178,41 @@ SOCKET GetSocket(DWORD pid) {
 				pObjectNameInformation = (POBJECT_NAME_INFORMATION)calloc(objectInformationLength, sizeof(UCHAR));
 
 				if (!pObjectNameInformation)
-					break; // NEED TO EXIT COMPLETLY.
+					break;
 			}
+
+			if (!pObjectNameInformation)
+				break;
 
 			// Checking if the object name matches to the UDP.
 			if ((pObjectNameInformation->Name.Length / 2) == wcslen(pcwDeviceUdp)) {
+				if ((wcsncmp(pObjectNameInformation->Name.Buffer, pcwDeviceUdp, wcslen(pcwDeviceUdp)) == 0)) {
 
+					// Trying to duplicate the socket handle.
+					wsaErr = WSADuplicateSocketW((SOCKET)targetHandle, GetCurrentProcessId(), &wsaProtocolInfo);
+
+					if (wsaErr != 0) {
+						OutputDebugStringA("Failed to retrieve WSA protocol info.");
+						break;
+					}
+
+					targetSocket = WSASocket(wsaProtocolInfo.iAddressFamily,
+						wsaProtocolInfo.iSocketType,
+						wsaProtocolInfo.iProtocol,
+						&wsaProtocolInfo,
+						0,
+						WSA_FLAG_OVERLAPPED);
+
+					if (targetSocket != INVALID_SOCKET) {
+						std::cout << "Socket was duplicated!" << std::endl;
+						// fwprintf(stdout, L"[OK] Socket was duplicated!\n");
+						break;
+					}
+					else {
+						std::cout << "Failed to duplicate socket: " << GetLastError() << std::endl;
+						break;
+					}
+				}
 			}
 		}
 	} while (false);

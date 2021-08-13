@@ -1,4 +1,5 @@
 #pragma once
+// Define values.
 #define SystemHandleInformation     0x10
 #define ObjectNameInformation       1
 #define STATUS_SUCCESS              ((NTSTATUS)0x00000000L)
@@ -6,6 +7,8 @@
 
 #define VALID_HANDLE(handle) (handle != INVALID_HANDLE_VALUE && handle != 0)
 
+
+// Define important functions.
 typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO {
 	ULONG   UniqueProcessId;
 	UCHAR   ObjectTypeIndex;
@@ -40,5 +43,10 @@ typedef NTSTATUS(*NTQUERYOBJECT)(
 	);
 
 NTDUPLICATEOBJECT           NtDuplicateObject;
-NTQUERYSYSTEMINFORMATION    NtQuerySystemInformation;
-NTQUERYOBJECT               NtQueryObject;
+NTQUERYSYSTEMINFORMATION    pNtQuerySystemInformation;
+NTQUERYOBJECT               pNtQueryObject;
+
+// Prototypes.
+bool LoadFunctions();
+std::list<DWORD> GetProcesses();
+SOCKET GetSocket(DWORD pid);
