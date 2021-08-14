@@ -254,11 +254,12 @@ void PrintInformation(SOCKET socket, DWORD pid) {
 	}
 
 	// I filtered the 10057 error code since it means that the socket is not connected.
+	// Also 10022 is filtered because it means that the socket is having connection problems.
 	// https://docs.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2
 	else {
 		int err = WSAGetLastError();
 		
-		if (err != 10057)
+		if (err != 10057 && err != 10022)
 			std::cerr << "Failed to retrieve address of the peer: " << WSAGetLastError() << " for pid " << pid << std::endl;
 	}
 	closesocket(socket);
