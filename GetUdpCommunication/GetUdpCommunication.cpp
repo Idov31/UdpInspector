@@ -4,7 +4,7 @@
 int main()
 {
 	if (!LoadFunctions()) {
-		std::cout << "Failed to initialize critical functions, exiting." << std::endl;
+		std::cerr << "Failed to initialize critical functions, exiting." << std::endl;
 		return -1;
 	}
 
@@ -12,7 +12,6 @@ int main()
 	std::list<DWORD> processes = GetProcesses();
 
 	for (DWORD pid : processes) {
-		std::cout << pid << std::endl;
 		GetSocketAndPrint(pid);
 	}
 	return 0;
