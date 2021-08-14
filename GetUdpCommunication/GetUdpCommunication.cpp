@@ -241,7 +241,7 @@ void GetSocketAndPrint(DWORD pid)
 void PrintInformation(SOCKET socket, DWORD pid) {
 	sockaddr_in socketAddress;
 	int nameLength = sizeof(sockaddr_in);
-	int result = getpeername(socket, (PSOCKADDR)&socketAddress, &nameLength);
+	int result = getsockname(socket, (PSOCKADDR)&socketAddress, &nameLength);
 
 	if (result == 0) {
 		fwprintf(stdout, L"Pid: %d\tAddress: %u.%u.%u.%u\tPort: %hu\n",
