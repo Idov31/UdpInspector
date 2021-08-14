@@ -11,16 +11,9 @@ int main()
 	// Getting the processes that communicates via UDP.
 	std::list<DWORD> processes = GetProcesses();
 
-	SOCKET processSocket;
-	std::list<std::string> remoteAddresses;
-
 	for (DWORD pid : processes) {
 		std::cout << pid << std::endl;
-		processSocket = GetSocket(pid);
-
-		if (processSocket != INVALID_SOCKET) {
-			PrintInformation(processSocket, pid);
-		}
+		GetSocketAndPrint(pid);
 	}
 	return 0;
 }
@@ -108,7 +101,7 @@ std::list<DWORD> GetProcesses() {
 	return lmib;
 }
 
-SOCKET GetSocket(DWORD pid)
+void GetSocketAndPrint(DWORD pid)
 {
 	PSYSTEM_HANDLE_INFORMATION  pSysHandleInfo = NULL;
 	POBJECT_NAME_INFORMATION    pObjNameInfo = NULL;
@@ -127,14 +120,14 @@ SOCKET GetSocket(DWORD pid)
 
 	if (!VALID_HANDLE(hProcess)) {
 		std::cerr << "Failed to open process " << pid << " because: " << GetLastError() << std::endl;
-		return TargetSocket;
+		return;
 	}
 
 	pSysHandleInfo = (PSYSTEM_HANDLE_INFORMATION)calloc(SystemInformationLength, sizeof(UCHAR));
 
 	if (!pSysHandleInfo) {
 		std::cerr << "Failed to allocate buffer for system handles: " << GetLastError() << std::endl;
-		return TargetSocket;
+		return;
 	}
 
 	// Getting the handles for the process.
@@ -148,13 +141,13 @@ SOCKET GetSocket(DWORD pid)
 
 		if (!pSysHandleInfo) {
 			std::cerr << "Failed to allocate buffer for system handles: " << GetLastError() << std::endl;
-			return TargetSocket;
+			return;
 		}
 	}
 
 	if (!pSysHandleInfo) {
 		CloseHandle(TargetHandle);
-		return TargetSocket;
+		return;
 	}
 
 	// Iterating the handles.
@@ -178,7 +171,7 @@ SOCKET GetSocket(DWORD pid)
 					free(pSysHandleInfo);
 					pSysHandleInfo = NULL;
 
-					return TargetSocket;
+					return;
 				}
 
 				// Getting the object's name.
@@ -198,7 +191,7 @@ SOCKET GetSocket(DWORD pid)
 						free(pSysHandleInfo);
 						pSysHandleInfo = NULL;
 
-						return TargetSocket;
+						return;
 					}
 				}
 
@@ -216,7 +209,7 @@ SOCKET GetSocket(DWORD pid)
 							pSysHandleInfo = NULL;
 							pObjNameInfo = NULL;
 
-							return TargetSocket;
+							return;
 						}
 						else {
 							TargetSocket = WSASocket(WsaProtocolInfo.iAddressFamily,
@@ -227,35 +220,30 @@ SOCKET GetSocket(DWORD pid)
 								WSA_FLAG_OVERLAPPED);
 
 							if (TargetSocket != INVALID_SOCKET) {
-								CloseHandle(TargetHandle);
 								free(pObjNameInfo);
-								free(pSysHandleInfo);
 								pObjNameInfo = NULL;
-								pSysHandleInfo = NULL;
 
-								return TargetSocket;
+								if (WsaProtocolInfo.iAddressFamily == AF_INET)
+									PrintInformation(TargetSocket, pid);
 							}
 						}
 					}
 				}
-
-				CloseHandle(TargetHandle);
 				free(pObjNameInfo);
 				pObjNameInfo = NULL;
 			}
 		}
 	}
-
+	CloseHandle(TargetHandle);
 	free(pSysHandleInfo);
-
-	return TargetSocket;
 }
 
 void PrintInformation(SOCKET socket, DWORD pid) {
 	sockaddr_in socketAddress;
 	int nameLength = sizeof(sockaddr_in);
+	int result = getpeername(socket, (PSOCKADDR)&socketAddress, &nameLength);
 
-	if (getpeername(socket, (PSOCKADDR)&socketAddress, &nameLength) == 0) {
+	if (result == 0) {
 		fwprintf(stdout, L"Pid: %d\tAddress: %u.%u.%u.%u\tPort: %hu\n",
 			pid,
 			socketAddress.sin_addr.S_un.S_un_b.s_b1,
@@ -267,7 +255,11 @@ void PrintInformation(SOCKET socket, DWORD pid) {
 
 	// I filtered the 10057 error code since it means that the socket is not connected.
 	// https://docs.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2
-	else
-		std::cerr << "Failed to retrieve address of the peer: " << WSAGetLastError() << " for pid " << pid << std::endl;
+	else {
+		int err = WSAGetLastError();
+		
+		if (err != 10057)
+			std::cerr << "Failed to retrieve address of the peer: " << WSAGetLastError() << " for pid " << pid << std::endl;
+	}
 	closesocket(socket);
 }
