@@ -1,5 +1,5 @@
 #include "stdafx.h"
-#include "GetUdpCommunication.h"
+#include "UdpInspector.h"
 
 int main()
 {
