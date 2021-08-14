@@ -15,6 +15,9 @@ These are the logical steps (of course, you can always see the source code as we
 * Duplicate the handle to the socket (identified with \Device\Afd).
 * Extract from the socket the remote address.
 
+## Compiling
+I was using Visual Studio 2019, strongly recommand to use this for compilation.
+
 ## References
 I strongly recommand to read and see the interesting article about ShadowMove:
 * https://www.usenix.org/system/files/sec20summer_niakanlahiji_prepub.pdf
