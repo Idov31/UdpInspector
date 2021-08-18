@@ -3,7 +3,7 @@ Unlike most of the programs that are giving the current UDP connections, this pr
 <b>Another note: I'm working on an article that will explain how I approached the problem, and technical explenation about this, stay tuned!</b>
 
 ## Okay, cool but... still what's the fuss?
-As part of my project (hopefully will come out soon) I wanted to get all active UDP connections, but I encountered a problem:<br />
+As part of my research on network protocols I wanted to get all active UDP connections, but I encountered a problem:<br />
 I could not get the remote address (which is very important) when somebody connected via UDP (without sniffing - Just good ol' winapi)! This was thought to be impossible... Until now.<br/> 
 I went on a quest to find the answer once and for all - How to do it?<br /><br />
 With the help of the amazing repositories and article (listed below) and people that helped me, I found a way!
