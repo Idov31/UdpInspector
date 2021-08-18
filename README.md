@@ -1,8 +1,8 @@
-# What's all the fuzz about?
+# What's all the fuss about?
 Unlike most of the programs that are giving the current UDP connections, this program gives also the remote address!<br />Any bugs and improvements will be welcomed!<br /><b>NOTE: You will need to run the program as administrator.</b><br />
 <b>Another note: I'm working on an article that will explain how I approached the problem, and technical explenation about this, stay tuned!</b>
 
-## Okay, cool but... still what's the fuzz?
+## Okay, cool but... still what's the fuss?
 As part of my project (hopefully will come out soon) I wanted to get all active UDP connections, but I encountered a problem:<br />
 I could not get the remote address (which is very important) when somebody connected via UDP (without sniffing - Just good ol' winapi)! This was thought to be impossible... Until now.<br/> 
 I went on a quest to find the answer once and for all - How to do it?<br /><br />
