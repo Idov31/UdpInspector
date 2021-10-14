@@ -1,4 +1,6 @@
-# What's all the fuss about?
+# UdpInspector
+![image](https://img.shields.io/badge/C%2B%2B-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white) ![image](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
+## What's all the fuss about?
 Unlike most of the programs that are giving the current UDP connections, this program gives also the remote address!<br />Any bugs and improvements will be welcomed!<br /><b>NOTE: You will need to run the program as administrator.</b><br />
 <b>Another note: You can read more about it in: https://idov31.github.io/papers/udp_connections.html</b>
 
